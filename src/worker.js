@@ -621,6 +621,7 @@ function streamOpenAIResponses(upstream, meta) {
 }
 
 function streamAnthropicMessages(upstream, meta) {
+  let closed = false;
   return streamUnlimitedEvents(upstream, {
     start(controller) {
       writeSseEvent(controller, "message_start", {
@@ -650,11 +651,13 @@ function streamAnthropicMessages(upstream, meta) {
       });
     },
     finish(controller, reason) {
+      if (closed) return;
+      closed = true;
       writeSseEvent(controller, "content_block_stop", { type: "content_block_stop", index: 0 });
       writeSseEvent(controller, "message_delta", {
         type: "message_delta",
         delta: { stop_reason: anthropicStopReason(reason), stop_sequence: null },
-        usage: { output_tokens: 0 },
+        usage: { input_tokens: 0, output_tokens: 0 },
       });
       writeSseEvent(controller, "message_stop", { type: "message_stop" });
     },
@@ -690,7 +693,7 @@ function streamUnlimitedEvents(upstream, handlers) {
               handlers.delta && handlers.delta(controller, parsed.delta, parsed);
             }
 
-            if (parsed.finish || parsed.done) {
+            if ((parsed.finish || parsed.done) && !finished) {
               finished = true;
               handlers.finish && handlers.finish(controller, parsed.reason || "stop", parsed);
             }
